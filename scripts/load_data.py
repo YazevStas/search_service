@@ -1,0 +1,110 @@
+"""Загрузка CSV в PostgreSQL и индексация в Elasticsearch.
+
+Использование:
+    python -m scripts.load_data data/posts.csv [--recreate] [--batch-size 1000]
+
+Ожидаемые колонки CSV: text, created_date, rubrics (опционально id).
+"""
+import argparse
+import ast
+import asyncio
+import csv
+import sys
+from collections.abc import Iterable, Iterator
+from datetime import datetime
+from pathlib import Path
+
+from elasticsearch import AsyncElasticsearch
+from sqlalchemy import insert, text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.config import get_settings
+from app.models import Base, Document
+from app.search import SearchIndex
+
+csv.field_size_limit(sys.maxsize)
+
+
+def parse_rubrics(raw: str) -> list[str]:
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        return [str(r) for r in ast.literal_eval(raw)]
+    return [r.strip() for r in raw.split(",") if r.strip()]
+
+
+def read_rows(path: Path) -> Iterator[dict]:
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            row = {k.strip().lower(): v for k, v in row.items() if k}
+            item = {
+                "text": row["text"],
+                "created_date": datetime.fromisoformat(row["created_date"].strip()),
+                "rubrics": parse_rubrics(row.get("rubrics", "")),
+            }
+            if row.get("id"):
+                item["id"] = int(row["id"])
+            yield item
+
+
+def batched(items: Iterable[dict], size: int) -> Iterator[list[dict]]:
+    batch: list[dict] = []
+    for item in items:
+        batch.append(item)
+        if len(batch) == size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+async def load(path: Path, batch_size: int, recreate: bool) -> None:
+    settings = get_settings()
+    engine = create_async_engine(settings.database_url)
+    es = AsyncElasticsearch(settings.elasticsearch_url, request_timeout=60)
+    index = SearchIndex(es, settings.es_index)
+    try:
+        async with engine.begin() as conn:
+            if recreate:
+                await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+        await index.ensure_index(recreate=recreate)
+
+        total = 0
+        sessionmaker = async_sessionmaker(engine)
+        async with sessionmaker() as session:
+            for batch in batched(read_rows(path), batch_size):
+                result = await session.execute(
+                    insert(Document).returning(Document.id, Document.text), batch
+                )
+                await index.bulk_index((r.id, r.text) for r in result)
+                await session.commit()
+                total += len(batch)
+                print(f"loaded {total}", flush=True)
+            # если id пришли из CSV, выравниваем sequence
+            await session.execute(text(
+                "SELECT setval(pg_get_serial_sequence('documents', 'id'), "
+                "COALESCE((SELECT MAX(id) FROM documents), 1))"
+            ))
+            await session.commit()
+        await es.indices.refresh(index=settings.es_index)
+        print(f"done: {total} documents")
+    finally:
+        await es.close()
+        await engine.dispose()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("csv_path", type=Path)
+    parser.add_argument("--batch-size", type=int, default=1000)
+    parser.add_argument("--recreate", action="store_true", help="пересоздать таблицу и индекс")
+    args = parser.parse_args()
+    asyncio.run(load(args.csv_path, args.batch_size, args.recreate))
+
+
+if __name__ == "__main__":
+    main()
