@@ -1,45 +1,52 @@
 from datetime import datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from app.models import Document
 
 
-async def test_health(client):
-    resp = await client.get("/health")
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
-
-
 async def test_search_returns_all_db_fields(client, seed):
-    [doc] = await seed([{
-        "text": "Сегодня в городе прошёл концерт",
-        "rubrics": ["VK-1", "VK-2"],
-        "created_date": datetime(2019, 12, 8, 6, 24, 46),
-    }])
+    [doc] = await seed(
+        [
+            {
+                "text": "Сегодня в городе прошёл концерт",
+                "rubrics": ["VK-1", "VK-2"],
+                "created_date": datetime(2019, 12, 8, 6, 24, 46),
+            }
+        ]
+    )
     await seed([{"text": "Совсем другой текст про погоду"}])
 
     resp = await client.get("/documents/search", params={"query": "концерт"})
 
     assert resp.status_code == 200
-    assert resp.json() == [{
-        "id": doc.id,
-        "rubrics": ["VK-1", "VK-2"],
-        "text": "Сегодня в городе прошёл концерт",
-        "created_date": "2019-12-08T06:24:46",
-    }]
+    assert resp.json() == [
+        {
+            "id": doc.id,
+            "rubrics": ["VK-1", "VK-2"],
+            "text": "Сегодня в городе прошёл концерт",
+            "created_date": "2019-12-08T06:24:46",
+        }
+    ]
 
 
 async def test_search_orders_by_created_date(client, seed):
     base = datetime(2020, 1, 1)
-    await seed([
-        {"text": "новость номер один", "created_date": base + timedelta(days=1)},
-        {"text": "новость номер два", "created_date": base + timedelta(days=3)},
-        {"text": "новость номер три", "created_date": base + timedelta(days=2)},
-    ])
+    await seed(
+        [
+            {"text": "новость номер один", "created_date": base + timedelta(days=1)},
+            {"text": "новость номер два", "created_date": base + timedelta(days=3)},
+            {"text": "новость номер три", "created_date": base + timedelta(days=2)},
+        ]
+    )
 
     desc = (await client.get("/documents/search", params={"query": "новость"})).json()
-    asc = (await client.get("/documents/search", params={"query": "новость", "order": "asc"})).json()
+    asc = (
+        await client.get(
+            "/documents/search", params={"query": "новость", "order": "asc"}
+        )
+    ).json()
 
     desc_dates = [d["created_date"] for d in desc]
     assert len(desc) == 3
@@ -75,15 +82,23 @@ async def test_search_no_results(client, seed):
 
 async def test_search_requires_query(client):
     assert (await client.get("/documents/search")).status_code == 422
-    assert (await client.get("/documents/search", params={"query": ""})).status_code == 422
-    assert (await client.get("/documents/search", params={"query": "   "})).status_code == 422
+    assert (
+        await client.get("/documents/search", params={"query": ""})
+    ).status_code == 422
+    assert (
+        await client.get("/documents/search", params={"query": "   "})
+    ).status_code == 422
 
 
 async def test_delete_removes_from_db_and_index(app, client, seed):
-    keep, remove = await seed([{"text": "первый пост о спорте"}, {"text": "второй пост о спорте"}])
+    keep, remove = await seed(
+        [{"text": "первый пост о спорте"}, {"text": "второй пост о спорте"}]
+    )
 
     resp = await client.delete(f"/documents/{remove.id}")
     assert resp.status_code == 204
+    # deletion becomes visible to search after the next index refresh
+    await app.state.es.indices.refresh(index=app.state.index.name)
 
     found = (await client.get("/documents/search", params={"query": "пост"})).json()
     assert [d["id"] for d in found] == [keep.id]
@@ -94,6 +109,21 @@ async def test_delete_removes_from_db_and_index(app, client, seed):
 
     hits = await app.state.index.search("пост", 20)
     assert hits == [keep.id]
+
+
+async def test_delete_keeps_document_if_index_fails(app, client, seed, monkeypatch):
+    [doc] = await seed([{"text": "важный документ"}])
+
+    async def fail(doc_id: int) -> bool:
+        raise ConnectionError("index is down")
+
+    monkeypatch.setattr(app.state.index, "delete", fail)
+
+    with pytest.raises(ConnectionError):
+        await client.delete(f"/documents/{doc.id}")
+
+    async with app.state.sessionmaker() as session:
+        assert await session.get(Document, doc.id) is not None
 
 
 async def test_delete_twice_returns_404(client, seed):

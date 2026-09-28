@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Document Search Service",
-    "description": "Простой поисковик по текстам документов (PostgreSQL + Elasticsearch).",
+    "description": "Simple full-text search over documents (PostgreSQL + Elasticsearch).",
     "version": "1.0.0"
   },
   "paths": {
@@ -11,8 +11,8 @@
         "tags": [
           "documents"
         ],
-        "summary": "Поиск документов",
-        "description": "Ищет по тексту документов в индексе Elasticsearch, берёт первые 20 наиболее релевантных и возвращает их со всеми полями из БД, упорядоченными по дате создания.",
+        "summary": "Search documents",
+        "description": "Runs a full-text search over document texts in Elasticsearch, takes the 20 most relevant hits and returns them with all database fields, ordered by creation date.",
         "operationId": "search_documents_search_get",
         "parameters": [
           {
@@ -23,10 +23,10 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 1000,
-              "description": "Поисковый запрос",
+              "description": "Search query",
               "title": "Query"
             },
-            "description": "Поисковый запрос"
+            "description": "Search query"
           },
           {
             "name": "order",
@@ -34,10 +34,10 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SortOrder",
-              "description": "Порядок сортировки по дате",
+              "description": "Sort order by creation date",
               "default": "desc"
             },
-            "description": "Порядок сортировки по дате"
+            "description": "Sort order by creation date"
           }
         ],
         "responses": {
@@ -73,8 +73,8 @@
         "tags": [
           "documents"
         ],
-        "summary": "Удаление документа",
-        "description": "Удаляет документ из БД и из поискового индекса по id.",
+        "summary": "Delete document",
+        "description": "Deletes a document from the database and the search index by id.",
         "operationId": "delete_documents__doc_id__delete",
         "parameters": [
           {
@@ -84,10 +84,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "description": "id документа",
+              "description": "Document id",
               "title": "Doc Id"
             },
-            "description": "id документа"
+            "description": "Document id"
           }
         ],
         "responses": {
@@ -95,7 +95,7 @@
             "description": "Successful Response"
           },
           "404": {
-            "description": "Документ не найден",
+            "description": "Document not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -110,31 +110,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/health": {
-      "get": {
-        "tags": [
-          "service"
-        ],
-        "summary": "Проверка работоспособности",
-        "operationId": "health_health_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "type": "object",
-                  "title": "Response Health Health Get"
                 }
               }
             }
@@ -171,7 +146,7 @@
             "type": "string",
             "title": "Text",
             "examples": [
-              "Текст документа"
+              "Document text"
             ]
           },
           "created_date": {

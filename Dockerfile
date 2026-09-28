@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS base
 
 COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /usr/local/bin/uv
 
@@ -8,8 +8,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 WORKDIR /srv
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-cache
 
+
+# Dev: prod dependencies + the dev group (pytest, linters, formatters)
+FROM base AS dev
+RUN uv sync --frozen --no-cache
+COPY . .
+
+
+# Prod: only [project.dependencies]
+FROM base AS prod
+RUN uv sync --frozen --no-cache --no-dev
 COPY . .
 
 EXPOSE 8000

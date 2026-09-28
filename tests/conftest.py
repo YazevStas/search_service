@@ -1,4 +1,3 @@
-import os
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
@@ -13,13 +12,14 @@ from app.models import Base, Document
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(
-        database_url=os.getenv(
-            "TEST_DATABASE_URL",
-            "postgresql+asyncpg://postgres:postgres@localhost:5432/documents_test",
-        ),
-        elasticsearch_url=os.getenv("TEST_ELASTICSEARCH_URL", "http://localhost:9200"),
-        es_index=os.getenv("TEST_ES_INDEX", "documents_test"),
+    # Same connections from the environment, but a separate database and index
+    # so tests never touch the main data.
+    base = Settings()
+    return base.model_copy(
+        update={
+            "postgres_db": f"{base.postgres_db}_test",
+            "es_index": f"{base.es_index}_test",
+        }
     )
 
 
@@ -32,12 +32,16 @@ async def app(settings):
             await conn.run_sync(Base.metadata.create_all)
         await app.state.index.ensure_index(recreate=True)
         yield app
-        await app.state.es.indices.delete(index=settings.es_index, ignore_unavailable=True)
+        await app.state.es.indices.delete(
+            index=settings.es_index, ignore_unavailable=True
+        )
 
 
 @pytest_asyncio.fixture
 async def client(app):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as c:
         yield c
 
 

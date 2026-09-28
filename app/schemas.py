@@ -1,10 +1,10 @@
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class SortOrder(str, Enum):
+class SortOrder(StrEnum):
     asc = "asc"
     desc = "desc"
 
@@ -14,7 +14,7 @@ class DocumentOut(BaseModel):
 
     id: int = Field(examples=[42])
     rubrics: list[str] = Field(examples=[["VK-1603736028819866", "VK-27544774585"]])
-    text: str = Field(examples=["Текст документа"])
+    text: str = Field(examples=["Document text"])
     created_date: datetime = Field(examples=["2019-12-08T06:24:46"])
 
 

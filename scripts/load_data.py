@@ -1,10 +1,11 @@
-"""Загрузка CSV в PostgreSQL и индексация в Elasticsearch.
+"""Loads a CSV into PostgreSQL and indexes it in Elasticsearch.
 
-Использование:
+Usage:
     python -m scripts.load_data data/posts.csv [--recreate] [--batch-size 1000]
 
-Ожидаемые колонки CSV: text, created_date, rubrics (опционально id).
+Expected CSV columns: text, created_date, rubrics (id is optional).
 """
+
 import argparse
 import ast
 import asyncio
@@ -16,7 +17,11 @@ from pathlib import Path
 
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import insert, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.config import get_settings
 from app.models import Base, Document
@@ -59,6 +64,28 @@ def batched(items: Iterable[dict], size: int) -> Iterator[list[dict]]:
         yield batch
 
 
+async def load_batch(
+    session: AsyncSession, index: SearchIndex, batch: list[dict]
+) -> None:
+    """Inserts a batch into the database and the index. If any step fails,
+    the database transaction is rolled back and the batch is removed from
+    the index, so the two stores never diverge."""
+    ids: list[int] = []
+    try:
+        result = await session.execute(
+            insert(Document).returning(Document.id, Document.text), batch
+        )
+        rows = result.all()
+        ids = [r.id for r in rows]
+        await index.bulk_index((r.id, r.text) for r in rows)
+        await session.commit()
+    except BaseException:
+        await session.rollback()
+        if ids:
+            await index.bulk_delete(ids)
+        raise
+
+
 async def load(path: Path, batch_size: int, recreate: bool) -> None:
     settings = get_settings()
     engine = create_async_engine(settings.database_url)
@@ -75,18 +102,16 @@ async def load(path: Path, batch_size: int, recreate: bool) -> None:
         sessionmaker = async_sessionmaker(engine)
         async with sessionmaker() as session:
             for batch in batched(read_rows(path), batch_size):
-                result = await session.execute(
-                    insert(Document).returning(Document.id, Document.text), batch
-                )
-                await index.bulk_index((r.id, r.text) for r in result)
-                await session.commit()
+                await load_batch(session, index, batch)
                 total += len(batch)
                 print(f"loaded {total}", flush=True)
-            # если id пришли из CSV, выравниваем sequence
-            await session.execute(text(
-                "SELECT setval(pg_get_serial_sequence('documents', 'id'), "
-                "COALESCE((SELECT MAX(id) FROM documents), 1))"
-            ))
+            # if ids came from the CSV, move the sequence past them
+            await session.execute(
+                text(
+                    "SELECT setval(pg_get_serial_sequence('documents', 'id'), "
+                    "COALESCE((SELECT MAX(id) FROM documents), 1))"
+                )
+            )
             await session.commit()
         await es.indices.refresh(index=settings.es_index)
         print(f"done: {total} documents")
@@ -101,7 +126,9 @@ def main() -> None:
     )
     parser.add_argument("csv_path", type=Path)
     parser.add_argument("--batch-size", type=int, default=1000)
-    parser.add_argument("--recreate", action="store_true", help="пересоздать таблицу и индекс")
+    parser.add_argument(
+        "--recreate", action="store_true", help="recreate the table and the index"
+    )
     args = parser.parse_args()
     asyncio.run(load(args.csv_path, args.batch_size, args.recreate))
 

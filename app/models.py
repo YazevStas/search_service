@@ -13,6 +13,8 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    rubrics: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    rubrics: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, default=list
+    )
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    created_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)

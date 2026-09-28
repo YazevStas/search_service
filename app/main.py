@@ -36,15 +36,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Document Search Service",
         version="1.0.0",
-        description="Простой поисковик по текстам документов (PostgreSQL + Elasticsearch).",
+        description="Simple full-text search over documents (PostgreSQL + Elasticsearch).",
         lifespan=lifespan,
     )
     app.include_router(router)
-
-    @app.get("/health", tags=["service"], summary="Проверка работоспособности")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
-
     return app
 
 

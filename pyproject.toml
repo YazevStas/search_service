@@ -18,6 +18,9 @@ dev = [
     "pytest==8.3.4",
     "pytest-asyncio==0.24.0",
     "httpx==0.28.1",
+    "ruff==0.16.9",
+    "isort==9.0.1",
+    "black==26.5.1",
 ]
 
 [tool.uv]
@@ -27,3 +30,32 @@ package = false
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["app", "scripts", "tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# black formats the code and isort sorts imports,
+# so ruff is used only as a linter.
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501", # line length is enforced by black
+    "B008", # calls in argument defaults are the standard FastAPI pattern (Depends/Query)
+]
