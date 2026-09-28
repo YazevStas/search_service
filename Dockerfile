@@ -10,13 +10,13 @@ WORKDIR /srv
 COPY pyproject.toml uv.lock ./
 
 
-# Dev: prod dependencies + the dev group (pytest, linters, formatters)
+# Dev: prod-зависимости + группа dev (pytest, линтеры, форматеры)
 FROM base AS dev
 RUN uv sync --frozen --no-cache
 COPY . .
 
 
-# Prod: only [project.dependencies]
+# Prod: только зависимости из [project.dependencies]
 FROM base AS prod
 RUN uv sync --frozen --no-cache --no-dev
 COPY . .

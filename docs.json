@@ -55,6 +55,16 @@
               }
             }
           },
+          "503": {
+            "description": "Search index is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -83,6 +93,7 @@
             "required": true,
             "schema": {
               "type": "integer",
+              "maximum": 9223372036854775807,
               "minimum": 1,
               "description": "Document id",
               "title": "Doc Id"
@@ -96,6 +107,16 @@
           },
           "404": {
             "description": "Document not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Search index is unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -224,6 +245,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

@@ -1,9 +1,9 @@
-"""Loads a CSV into PostgreSQL and indexes it in Elasticsearch.
+"""Загружает CSV в PostgreSQL и индексирует его в Elasticsearch.
 
-Usage:
+Использование:
     python -m scripts.load_data data/posts.csv [--recreate] [--batch-size 1000]
 
-Expected CSV columns: text, created_date, rubrics (id is optional).
+Ожидаемые колонки CSV: text, created_date, rubrics (id — опционально).
 """
 
 import argparse
@@ -11,8 +11,9 @@ import ast
 import asyncio
 import csv
 import sys
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator, Sequence
 from datetime import datetime
+from itertools import batched
 from pathlib import Path
 
 from elasticsearch import AsyncElasticsearch
@@ -23,7 +24,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.models import Base, Document
 from app.search import SearchIndex
 
@@ -53,23 +54,12 @@ def read_rows(path: Path) -> Iterator[dict]:
             yield item
 
 
-def batched(items: Iterable[dict], size: int) -> Iterator[list[dict]]:
-    batch: list[dict] = []
-    for item in items:
-        batch.append(item)
-        if len(batch) == size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
-
-
 async def load_batch(
-    session: AsyncSession, index: SearchIndex, batch: list[dict]
+    session: AsyncSession, index: SearchIndex, batch: Sequence[dict]
 ) -> None:
-    """Inserts a batch into the database and the index. If any step fails,
-    the database transaction is rolled back and the batch is removed from
-    the index, so the two stores never diverge."""
+    """Записывает батч в БД и индекс. Если любой шаг падает, транзакция
+    в БД откатывается, а батч удаляется из индекса, чтобы хранилища
+    не расходились."""
     ids: list[int] = []
     try:
         result = await session.execute(
@@ -86,8 +76,7 @@ async def load_batch(
         raise
 
 
-async def load(path: Path, batch_size: int, recreate: bool) -> None:
-    settings = get_settings()
+async def load(path: Path, batch_size: int, recreate: bool, settings: Settings) -> None:
     engine = create_async_engine(settings.database_url)
     es = AsyncElasticsearch(settings.elasticsearch_url, request_timeout=60)
     index = SearchIndex(es, settings.es_index)
@@ -105,7 +94,7 @@ async def load(path: Path, batch_size: int, recreate: bool) -> None:
                 await load_batch(session, index, batch)
                 total += len(batch)
                 print(f"loaded {total}", flush=True)
-            # if ids came from the CSV, move the sequence past them
+            # если id пришли из CSV, сдвигаем sequence за максимальный id
             await session.execute(
                 text(
                     "SELECT setval(pg_get_serial_sequence('documents', 'id'), "
@@ -130,7 +119,7 @@ def main() -> None:
         "--recreate", action="store_true", help="recreate the table and the index"
     )
     args = parser.parse_args()
-    asyncio.run(load(args.csv_path, args.batch_size, args.recreate))
+    asyncio.run(load(args.csv_path, args.batch_size, args.recreate, get_settings()))
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     elasticsearch_url: str
     es_index: str
-    # upper bound is the default Elasticsearch index.max_result_window
+    # верхняя граница — значение index.max_result_window в Elasticsearch по умолчанию
     search_limit: int = Field(default=20, ge=1, le=10_000)
 
     @property

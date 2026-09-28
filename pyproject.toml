@@ -5,12 +5,12 @@ description = "Document search service (FastAPI + PostgreSQL + Elasticsearch)"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "fastapi==0.115.6",
-    "uvicorn[standard]==0.32.1",
-    "sqlalchemy[asyncio]==2.0.36",
-    "asyncpg==0.30.0",
+    "fastapi==0.141.1",
+    "uvicorn[standard]==0.52.4",
+    "sqlalchemy[asyncio]==2.0.54",
+    "asyncpg==0.31.0",
     "elasticsearch[async]==8.15.1",
-    "pydantic-settings==2.6.1",
+    "pydantic-settings==2.15.0",
 ]
 
 [dependency-groups]
@@ -25,6 +25,8 @@ dev = [
 
 [tool.uv]
 package = false
+# fastapi требует лишь starlette>=0.46; фиксируем уже устоявшийся релиз
+constraint-dependencies = ["starlette==1.6.0"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -45,17 +47,17 @@ line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
-# black formats the code and isort sorts imports,
-# so ruff is used only as a linter.
+# Форматирование делает black, импорты сортирует isort,
+# поэтому ruff используется только как линтер.
 select = [
-    "E",    # pycodestyle errors
-    "W",    # pycodestyle warnings
+    "E",    # ошибки pycodestyle
+    "W",    # предупреждения pycodestyle
     "F",    # pyflakes
     "B",    # flake8-bugbear
     "UP",   # pyupgrade
     "SIM",  # flake8-simplify
 ]
 ignore = [
-    "E501", # line length is enforced by black
-    "B008", # calls in argument defaults are the standard FastAPI pattern (Depends/Query)
+    "E501", # длину строк контролирует black
+    "B008", # вызовы в аргументах по умолчанию — штатный паттерн FastAPI (Depends/Query)
 ]

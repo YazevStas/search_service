@@ -1,4 +1,4 @@
-"""Generates docs.json from the app schema: python -m scripts.export_openapi"""
+"""Генерирует docs.json из схемы приложения: python -m scripts.export_openapi"""
 
 import json
 from pathlib import Path

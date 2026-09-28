@@ -1,10 +1,11 @@
+import csv
 from datetime import datetime
 
 import pytest
 from sqlalchemy import func, select
 
 from app.models import Document
-from scripts.load_data import load_batch, parse_rubrics, read_rows
+from scripts.load_data import load, load_batch, parse_rubrics, read_rows
 
 
 @pytest.mark.parametrize(
@@ -23,7 +24,7 @@ def test_parse_rubrics(raw, expected):
 def test_read_rows(tmp_path):
     path = tmp_path / "posts.csv"
     path.write_text(
-        '﻿Text,Created_Date,Rubrics,id\n"line one\nline two",'
+        '\ufeffText,Created_Date,Rubrics,id\n"line one\nline two",'
         "2019-07-25 12:42:13,\"['VK-1']\",7\n",
         encoding="utf-8",
     )
@@ -53,13 +54,6 @@ async def count_docs(app) -> tuple[int, int]:
     return in_db, in_index
 
 
-async def test_load_batch(app):
-    async with app.state.sessionmaker() as session:
-        await load_batch(session, app.state.index, make_batch(3))
-
-    assert await count_docs(app) == (3, 3)
-
-
 async def test_load_batch_rolls_back_index_on_db_failure(app, monkeypatch):
     async with app.state.sessionmaker() as session:
 
@@ -72,3 +66,17 @@ async def test_load_batch_rolls_back_index_on_db_failure(app, monkeypatch):
             await load_batch(session, app.state.index, make_batch(3))
 
     assert await count_docs(app) == (0, 0)
+
+
+async def test_load(app, settings, tmp_path):
+    path = tmp_path / "posts.csv"
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["text", "created_date", "rubrics"])
+        for i in range(5):
+            writer.writerow([f"пост {i}", "2019-07-25 12:42:13", "['VK-1']"])
+
+    # батчи по 2: два полных и один неполный
+    await load(path, batch_size=2, recreate=False, settings=settings)
+
+    assert await count_docs(app) == (5, 5)

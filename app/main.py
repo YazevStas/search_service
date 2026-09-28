@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 
-from elasticsearch import AsyncElasticsearch
-from fastapi import FastAPI
+from elasticsearch import AsyncElasticsearch, NotFoundError, TransportError
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import router
@@ -40,6 +41,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+
+    async def search_unavailable(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(
+            {"detail": "Search index is unavailable"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    # TransportError — ES не отвечает (нет соединения, таймаут),
+    # NotFoundError — индекса нет (отсутствие документа SearchIndex.delete обрабатывает сам)
+    app.add_exception_handler(TransportError, search_unavailable)
+    app.add_exception_handler(NotFoundError, search_unavailable)
+
     return app
 
 

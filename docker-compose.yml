@@ -1,5 +1,5 @@
-# All values come from environment variables / the .env file
-# (template: .env.example). Without .env compose fails with an error.
+# Все значения подставляются из переменных окружения / файла .env
+# (шаблон — .env.example). Без .env compose остановится с ошибкой.
 
 x-app-env: &app-env
   POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
-import pytest
+import pytest_asyncio
+from elasticsearch import AsyncElasticsearch
 from sqlalchemy import select
 
 from app.models import Document
@@ -97,7 +98,7 @@ async def test_delete_removes_from_db_and_index(app, client, seed):
 
     resp = await client.delete(f"/documents/{remove.id}")
     assert resp.status_code == 204
-    # deletion becomes visible to search after the next index refresh
+    # удаление станет видно поиску после следующего обновления индекса
     await app.state.es.indices.refresh(index=app.state.index.name)
 
     found = (await client.get("/documents/search", params={"query": "пост"})).json()
@@ -111,17 +112,22 @@ async def test_delete_removes_from_db_and_index(app, client, seed):
     assert hits == [keep.id]
 
 
-async def test_delete_keeps_document_if_index_fails(app, client, seed, monkeypatch):
+@pytest_asyncio.fixture
+async def break_index(app, monkeypatch):
+    """Возвращает функцию, которая направляет индекс на порт, где никто не слушает."""
+    dead = AsyncElasticsearch("http://127.0.0.1:1", max_retries=0)
+    yield lambda: monkeypatch.setattr(app.state.index, "client", dead)
+    await dead.close()
+
+
+async def test_delete_keeps_document_if_index_is_down(app, client, seed, break_index):
     [doc] = await seed([{"text": "важный документ"}])
+    break_index()
 
-    async def fail(doc_id: int) -> bool:
-        raise ConnectionError("index is down")
+    resp = await client.delete(f"/documents/{doc.id}")
 
-    monkeypatch.setattr(app.state.index, "delete", fail)
-
-    with pytest.raises(ConnectionError):
-        await client.delete(f"/documents/{doc.id}")
-
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Search index is unavailable"}
     async with app.state.sessionmaker() as session:
         assert await session.get(Document, doc.id) is not None
 
@@ -142,3 +148,5 @@ async def test_delete_unknown_returns_404(client):
 async def test_delete_invalid_id(client):
     assert (await client.delete("/documents/abc")).status_code == 422
     assert (await client.delete("/documents/0")).status_code == 422
+    # не помещается в BIGINT
+    assert (await client.delete(f"/documents/{2**63}")).status_code == 422

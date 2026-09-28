@@ -12,8 +12,8 @@ from app.models import Base, Document
 
 @pytest.fixture
 def settings() -> Settings:
-    # Same connections from the environment, but a separate database and index
-    # so tests never touch the main data.
+    # Те же подключения из окружения, но отдельные БД и индекс,
+    # чтобы тесты не трогали основные данные.
     base = Settings()
     return base.model_copy(
         update={

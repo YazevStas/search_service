@@ -13,8 +13,8 @@ async def search_documents(
     limit: int,
     order: SortOrder = SortOrder.desc,
 ) -> list[Document]:
-    """Takes the `limit` most relevant documents from the index
-    and returns them from the database, ordered by creation date."""
+    """Берёт из индекса `limit` самых релевантных документов
+    и возвращает их из БД, упорядоченными по дате создания."""
     ids = await index.search(query, limit)
     if not ids:
         return []
@@ -30,8 +30,8 @@ async def search_documents(
 async def delete_document(
     session: AsyncSession, index: SearchIndex, doc_id: int
 ) -> bool:
-    """Deletes a document from the database and the index. The database
-    deletion is committed only after the index deletion succeeds."""
+    """Удаляет документ из БД и индекса. Удаление из БД фиксируется
+    только после успешного удаления из индекса."""
     doc = await session.get(Document, doc_id)
     if doc is not None:
         await session.delete(doc)

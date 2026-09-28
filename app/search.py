@@ -1,4 +1,4 @@
-"""Wrapper around the Elasticsearch search index."""
+"""Обёртка над поисковым индексом Elasticsearch."""
 
 from collections.abc import Iterable
 
@@ -9,7 +9,7 @@ INDEX_SETTINGS = {"number_of_shards": 1, "number_of_replicas": 0}
 INDEX_MAPPINGS = {
     "properties": {
         "id": {"type": "long"},
-        # built-in analyzer with Russian stemming
+        # встроенный анализатор со стеммингом для русского языка
         "text": {"type": "text", "analyzer": "russian"},
     }
 }
@@ -30,12 +30,12 @@ class SearchIndex:
                 await self.client.indices.create(
                     index=self.name, settings=INDEX_SETTINGS, mappings=INDEX_MAPPINGS
                 )
-            except BadRequestError as exc:  # created concurrently
+            except BadRequestError as exc:  # индекс успели создать параллельно
                 if exc.error != "resource_already_exists_exception":
                     raise
 
     async def search(self, query: str, size: int) -> list[int]:
-        """Returns ids of the most relevant documents."""
+        """Возвращает id самых релевантных документов."""
         resp = await self.client.search(
             index=self.name,
             query={"match": {"text": {"query": query}}},
@@ -45,7 +45,7 @@ class SearchIndex:
         return [int(hit["_id"]) for hit in resp["hits"]["hits"]]
 
     async def delete(self, doc_id: int) -> bool:
-        """Deletes a document; returns False if it was not in the index."""
+        """Удаляет документ; возвращает False, если его не было в индексе."""
         try:
             await self.client.delete(index=self.name, id=str(doc_id))
         except NotFoundError:
@@ -67,7 +67,7 @@ class SearchIndex:
         return success
 
     async def bulk_delete(self, doc_ids: Iterable[int]) -> None:
-        """Deletes documents; ids missing from the index are ignored."""
+        """Удаляет документы; id, которых нет в индексе, пропускаются."""
         actions = (
             {"_op_type": "delete", "_index": self.name, "_id": str(doc_id)}
             for doc_id in doc_ids
