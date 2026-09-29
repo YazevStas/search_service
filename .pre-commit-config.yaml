@@ -1,0 +1,26 @@
+# Линтеры и форматеры запускаются перед каждым git push.
+# Установка хука (один раз после клонирования): uvx pre-commit install
+# Ручной запуск по всем файлам: uvx pre-commit run --all-files
+# Настройки инструментов лежат в pyproject.toml.
+
+default_install_hook_types: [pre-push]
+default_stages: [pre-push]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 9.0.1
+    hooks:
+      - id: isort
+        # на push только проверяем: исправления нужно закоммитить отдельно
+        args: [--check-only, --diff]
+
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 26.5.1
+    hooks:
+      - id: black
+        args: [--check, --diff]

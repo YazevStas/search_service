@@ -1,9 +1,13 @@
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Document
 from app.schemas import SortOrder
 from app.search import SearchIndex
+
+logger = logging.getLogger(__name__)
 
 
 async def search_documents(
@@ -42,4 +46,7 @@ async def delete_document(
         await session.rollback()
         raise
     await session.commit()
-    return doc is not None or in_index
+    deleted = doc is not None or in_index
+    if deleted:
+        logger.info("Document %s deleted", doc_id)
+    return deleted

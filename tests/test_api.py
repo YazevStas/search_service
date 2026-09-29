@@ -91,13 +91,14 @@ async def test_search_requires_query(client):
     ).status_code == 422
 
 
-async def test_delete_removes_from_db_and_index(app, client, seed):
+async def test_delete_removes_from_db_and_index(app, client, seed, caplog):
     keep, remove = await seed(
         [{"text": "первый пост о спорте"}, {"text": "второй пост о спорте"}]
     )
 
     resp = await client.delete(f"/documents/{remove.id}")
     assert resp.status_code == 204
+    assert f"Document {remove.id} deleted" in caplog.messages
     # удаление станет видно поиску после следующего обновления индекса
     await app.state.es.indices.refresh(index=app.state.index.name)
 
@@ -132,15 +133,12 @@ async def test_delete_keeps_document_if_index_is_down(app, client, seed, break_i
         assert await session.get(Document, doc.id) is not None
 
 
-async def test_delete_twice_returns_404(client, seed):
+async def test_delete_missing_document_returns_404(client, seed):
     [doc] = await seed([{"text": "одноразовый"}])
-
     assert (await client.delete(f"/documents/{doc.id}")).status_code == 204
-    assert (await client.delete(f"/documents/{doc.id}")).status_code == 404
 
+    resp = await client.delete(f"/documents/{doc.id}")
 
-async def test_delete_unknown_returns_404(client):
-    resp = await client.delete("/documents/999999")
     assert resp.status_code == 404
     assert resp.json() == {"detail": "Document not found"}
 

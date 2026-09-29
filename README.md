@@ -2,7 +2,7 @@
 
 Простой поисковик по текстам документов.
 
-**Стек:** FastAPI (async) · PostgreSQL + SQLAlchemy 2 (asyncpg) · Elasticsearch 8 (AsyncElasticsearch) · pytest · Docker Compose.
+**Стек:** FastAPI (async) · PostgreSQL + SQLAlchemy 2 (asyncpg) · Elasticsearch 8 (AsyncElasticsearch) · uv · pytest · Docker Compose.
 
 ## API
 
@@ -20,22 +20,31 @@
 Пример:
 
 ```bash
-curl "http://localhost:8000/documents/search?query=концерт"
+curl -G "http://localhost:8000/documents/search" --data-urlencode "query=концерт"
 curl -X DELETE "http://localhost:8000/documents/42"
 ```
 
 ## Быстрый старт (Docker)
 
-1. Скачайте датасет и положите его в `data/posts.csv`.
+1. Склонируйте репозиторий и перейдите в него:
+
+   ```bash
+   git clone https://github.com/YazevStas/search_service.git
+   cd search_service
+   ```
+
+   (или через GitHub CLI: `gh repo clone YazevStas/search_service`)
+
+2. Скачайте датасет и положите его в `data/posts.csv`.
    Ожидаемые колонки: `text`, `created_date`, `rubrics` (колонка `id` опциональна, иначе id генерирует БД).
 
-2. Создайте `.env` из шаблона и подставьте свои значения (логин, пароль, имя БД и индекса):
+3. Создайте `.env` из шаблона и подставьте свои значения (логин, пароль, имя БД и индекса):
 
    ```bash
    cp .env.example .env
    ```
 
-3. Поднимите сервисы:
+4. Поднимите сервисы:
 
    ```bash
    docker compose up -d --build
@@ -43,7 +52,7 @@ curl -X DELETE "http://localhost:8000/documents/42"
 
    Сервис доступен на http://localhost:8000. Таблица и индекс создаются при старте автоматически.
 
-4. Загрузите данные в БД и индекс:
+5. Загрузите данные в БД и индекс:
 
    ```bash
    docker compose exec app python -m scripts.load_data /data/posts.csv --recreate
@@ -51,6 +60,19 @@ curl -X DELETE "http://localhost:8000/documents/42"
 
    `--recreate` пересоздаёт таблицу и индекс. Без него строки добавляются к уже
    загруженным: если в CSV нет колонки `id`, повторный запуск создаст дубликаты.
+
+6. Проверьте работу вручную через Swagger UI:
+
+   1. Откройте http://localhost:8000/docs.
+   2. Раскройте `GET /documents/search`, нажмите **Try it out**, введите в поле `query`
+      например `концерт` и нажмите **Execute**. В **Response body** — до 20 документов
+      со всеми полями, отсортированных по `created_date` (сначала новые; для обратного
+      порядка выберите `order` = `asc`).
+   3. Скопируйте `id` любого найденного документа. Раскройте `DELETE /documents/{doc_id}`,
+      нажмите **Try it out**, вставьте `id` в поле `doc_id` и нажмите **Execute** — ответ `204`.
+      В логах приложения (`docker compose logs app`) появится строка `Document <id> deleted`.
+   4. Повторите поиск из шага 2 — удалённого документа в выдаче нет. Повторное удаление
+      того же `id` вернёт `404`.
 
 ## Тесты
 
@@ -64,26 +86,6 @@ docker compose --profile test run --rm --build tests
 > Тестовая БД создаётся скриптом `docker/init-test-db.sh` при **первой** инициализации тома Postgres.
 > Если том уже существовал до этого, создайте её вручную:
 > `docker compose exec postgres sh -c 'createdb -U "$POSTGRES_USER" "${POSTGRES_DB}_test"'`
-
-## Разработка
-
-Всё запускается только через Docker. Образ собирается в двух вариантах:
-`prod` (сервис `app`, только `[project.dependencies]`) и `dev` (сервис `tests`,
-плюс группа `dev` — pytest, ruff, isort, black).
-
-Проверка и форматирование кода (исходники монтируются в контейнер, чтобы
-форматеры могли их изменить):
-
-```bash
-docker compose --profile test run --rm -v "$PWD":/srv tests ruff check .
-docker compose --profile test run --rm -v "$PWD":/srv tests sh -c "isort . && black ."
-```
-
-После изменения API обновите документацию `docs.json`:
-
-```bash
-docker compose --profile test run --rm -v "$PWD":/srv tests python -m scripts.export_openapi
-```
 
 ## Конфигурация
 
@@ -137,10 +139,17 @@ docker/
   init-test-db.sh   # создание тестовой БД при первой инициализации Postgres
 data/               # сюда кладётся posts.csv (монтируется в app как /data)
 docs.json           # OpenAPI-документация
+.pre-commit-config.yaml  # ruff, isort, black перед каждым git push
 ```
 
 Решения:
 
+- **БД.** Одна таблица `documents`: `id BIGINT` (автоинкремент), `rubrics VARCHAR[]`,
+  `text TEXT`, `created_date TIMESTAMP`, все поля `NOT NULL`. Индекс один — первичный ключ
+  по `id` (B-tree, Postgres создаёт его автоматически): по нему достаются записи после
+  поиска в ES и удаляется документ. Других индексов нет намеренно: полнотекстовый поиск
+  делает ES, а сортировка по `created_date` применяется максимум к 20 строкам, уже
+  выбранным по `id`, поэтому индекс по дате только замедлял бы вставку.
 - **Поиск.** В индексе хранятся только `id` и `text` (поле `text` с анализатором `russian`,
   поэтому «кошки» находят «кошка»). Из ES берутся id 20 (`SEARCH_LIMIT`) самых релевантных документов, затем
   полные записи достаются из PostgreSQL одним запросом и сортируются по `created_date`.

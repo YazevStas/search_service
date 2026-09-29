@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from elasticsearch import AsyncElasticsearch, NotFoundError, TransportError
@@ -9,6 +10,14 @@ from app.api import router
 from app.config import Settings, get_settings
 from app.models import Base
 from app.search import SearchIndex
+
+# uvicorn настраивает только свои логгеры, поэтому логам приложения нужен обработчик
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+# клиент ES пишет в INFO каждый HTTP-запрос — это шум
+logging.getLogger("elastic_transport").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -43,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
 
     async def search_unavailable(request: Request, exc: Exception) -> JSONResponse:
+        logger.warning("Search index is unavailable: %r", exc)
         return JSONResponse(
             {"detail": "Search index is unavailable"},
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

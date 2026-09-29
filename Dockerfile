@@ -10,7 +10,7 @@ WORKDIR /srv
 COPY pyproject.toml uv.lock ./
 
 
-# Dev: prod-зависимости + группа dev (pytest, линтеры, форматеры)
+# Dev (сервис tests): prod-зависимости + группа dev (pytest)
 FROM base AS dev
 RUN uv sync --frozen --no-cache
 COPY . .
